@@ -1,8 +1,10 @@
 package com.example.demo2.controllers;
 
 import com.example.demo2.model.Video;
-import com.example.demo2.model.Movie;
-import com.example.demo2.model.Series;
+// If your models are in com.example.demo2 (not .model), use:
+// import com.example.demo2.Video;
+
+import com.example.demo2.service.VideoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,127 +12,83 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.NoSuchElementException;
 
 @RestController
 @RequestMapping("/api/videos")
 public class VideoController {
 
-    // In-memory list for the lab (no DB)
-    private final List<Video> videos = new ArrayList<>();
+    // ✅ Use the service instead of a local list
+    private final VideoService service;
 
-    public VideoController() {
-        // Seed data (similar to your console app)
-        videos.add(new Movie("Inception", "Sci-Fi"));
-        videos.add(new Series("Stranger Things", "Sci-Fi"));
+    // ✅ Constructor injection
+    public VideoController(VideoService service) {
+        this.service = service;
     }
 
-    /* -------------- #4: GET endpoints -------------- */
+    /* ---------- #4: GET endpoints ---------- */
 
     /** GET /api/videos -> return all videos */
     @GetMapping
     public List<Video> getAll() {
-        return videos;
+        return service.findAll();
     }
 
     /** GET /api/videos/available -> return only available videos */
     @GetMapping("/available")
     public List<Video> getAvailable() {
-        return videos.stream()
-                     .filter(Video::isAvailable)
-                     .toList();
+        return service.findAvailable();
     }
 
-    /* -------------- #5: POST endpoint -------------- */
+    /* ---------- #5: POST add movie ---------- */
 
     /**
-     * POST /api/videos/add/movie -> add a new Movie
-     * Request body JSON: { "title": "Shrek", "genre": "Animation" }
+     * Body: { "title": "Shrek", "genre": "Animation" }
      */
     @PostMapping("/add/movie")
     public ResponseEntity<?> addMovie(@RequestBody AddMovieRequest body) {
-        if (body == null || isBlank(body.getTitle()) || isBlank(body.getGenre())) {
-            return ResponseEntity.badRequest().body("Both 'title' and 'genre' are required.");
+        try {
+            if (body == null) {
+                return ResponseEntity.badRequest().body("Request body is required.");
+            }
+            Video created = service.addMovie(body.title, body.genre);
+            String location = "/api/videos/" + URLEncoder.encode(created.getTitle(), StandardCharsets.UTF_8);
+            return ResponseEntity.created(URI.create(location)).body(created);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
         }
-
-        // Enforce unique title (case-insensitive) for simplicity
-        if (findByTitle(body.getTitle()).isPresent()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("A video with title '" + body.getTitle() + "' already exists.");
-        }
-
-        Movie m = new Movie(body.getTitle().trim(), body.getGenre().trim());
-        videos.add(m);
-
-        // Location header for the new resource
-        String location = "/api/videos/" + URLEncoder.encode(m.getTitle(), StandardCharsets.UTF_8);
-        return ResponseEntity.created(URI.create(location)).body(m);
     }
 
-    /* -------------- #6: PUT endpoints -------------- */
+    /* ---------- #6: PUT rent/return ---------- */
 
-    /** PUT /api/videos/{title}/rent -> mark as unavailable */
     @PutMapping("/{title}/rent")
     public ResponseEntity<?> rent(@PathVariable String title) {
-        Optional<Video> maybe = findByTitle(title);
-        if (maybe.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body("Video not found: '" + title + "'");
+        try {
+            return ResponseEntity.ok(service.rent(title));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
         }
-        Video v = maybe.get();
-        if (!v.isAvailable()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Already rented: '" + v.getTitle() + "'");
-        }
-        v.rentVideo();
-        return ResponseEntity.ok(v);
     }
 
-    /** PUT /api/videos/{title}/return -> mark as available */
     @PutMapping("/{title}/return")
     public ResponseEntity<?> giveBack(@PathVariable String title) {
-        Optional<Video> maybe = findByTitle(title);
-        if (maybe.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body("Video not found: '" + title + "'");
+        try {
+            return ResponseEntity.ok(service.giveBack(title));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
         }
-        Video v = maybe.get();
-        if (v.isAvailable()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("Already available: '" + v.getTitle() + "'");
-        }
-        v.returnVideo();
-        return ResponseEntity.ok(v);
     }
 
-    /* -------------- Helpers -------------- */
-
-    private Optional<Video> findByTitle(String title) {
-        if (title == null) return Optional.empty();
-        String t = title.trim().toLowerCase();
-        return videos.stream()
-                .filter(v -> v.getTitle() != null && v.getTitle().trim().toLowerCase().equals(t))
-                .findFirst();
-    }
-
-    private static boolean isBlank(String s) {
-        return s == null || s.trim().isEmpty();
-    }
-
-    /** Request body for adding a movie (simple DTO) */
+    /* ---------- Simple request DTO ---------- */
     public static class AddMovieRequest {
-        private String title;
-        private String genre;
-
-        public AddMovieRequest() {}
-        public AddMovieRequest(String title, String genre) {
-            this.title = title; this.genre = genre;
-        }
-        public String getTitle() { return title; }
-        public void setTitle(String title) { this.title = title; }
-        public String getGenre() { return genre; }
-        public void setGenre(String genre) { this.genre = genre; }
+        public String title;
+        public String genre;
     }
 }

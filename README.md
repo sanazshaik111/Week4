@@ -31,6 +31,7 @@ POST localhost:8080/api/videos/add/movie
 ~ to add movie contents ~ 
 
 Key: Content-Type
+
 Value: application/json
 
 Body input:
@@ -44,7 +45,9 @@ Body input:
 
 ## Docker Commands:
 docker-compose down -v   // to stop running active containers
+
 .\gradlew.bat clean bootJar
+
 docker-compose up --build 
 
 ---

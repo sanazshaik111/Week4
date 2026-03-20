@@ -19,10 +19,10 @@ import java.util.NoSuchElementException;
 @RequestMapping("/api/videos")
 public class VideoController {
 
-    // ✅ Use the service instead of a local list
+    // Use the service instead of a local list
     private final VideoService service;
 
-    // ✅ Constructor injection
+    // Constructor injection
     public VideoController(VideoService service) {
         this.service = service;
     }

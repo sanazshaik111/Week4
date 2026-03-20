@@ -3,42 +3,38 @@ package com.example.demo2.service;
 import com.example.demo2.model.Movie;
 import com.example.demo2.model.Series;
 import com.example.demo2.model.Video;
+import com.example.demo2.repository.VideoRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Optional;
 
 @Service
 public class VideoService {
 
-    // Thread-safe list for demo purposes; a real app would use a repository/DB.
-    private final List<Video> videos = new CopyOnWriteArrayList<>();
+    private final VideoRepository videoRepository;
 
-    public VideoService() {
-        // Seed initial data (you can remove or modify)
-        videos.add(new Movie("Inception", "Sci-Fi"));
-        videos.add(new Series("Stranger Things", "Sci-Fi"));
+    public VideoService(VideoRepository videoRepository) {
+        this.videoRepository = videoRepository;
     }
 
     /* ---------- Queries ---------- */
 
     public List<Video> findAll() {
-        // Return a copy to avoid accidental external modification
-        return List.copyOf(videos);
+        return videoRepository.findAll();
     }
 
     public List<Video> findAvailable() {
-        return videos.stream()
-                .filter(Video::isAvailable)
-                .toList();
+        return videoRepository.findByAvailableTrue();
     }
 
     public Optional<Video> findByTitle(String title) {
         if (title == null) return Optional.empty();
-        String t = title.trim().toLowerCase();
-        return videos.stream()
-                .filter(v -> v.getTitle() != null && v.getTitle().trim().toLowerCase().equals(t))
-                .findFirst();
+        String t = title.trim();
+        if (t.isEmpty()) return Optional.empty();
+        return videoRepository.findByTitleIgnoreCase(t);
     }
 
     /* ---------- Commands ---------- */
@@ -52,27 +48,47 @@ public class VideoService {
         }
 
         Movie m = new Movie(title.trim(), genre.trim());
-        videos.add(m);
-        return m;
+        return videoRepository.save(m);
     }
 
+    // Optional helper if you also want to add series through the service
+    public Video addSeries(String title, String genre) {
+        requireText(title, "title");
+        requireText(genre, "genre");
+
+        if (findByTitle(title).isPresent()) {
+            throw new IllegalStateException("A video with title '" + title + "' already exists.");
+        }
+
+        Series s = new Series(title.trim(), genre.trim());
+        return videoRepository.save(s);
+    }
+
+    @Transactional
     public Video rent(String title) {
         Video v = findByTitle(title)
                 .orElseThrow(() -> new NoSuchElementException("Video not found: '" + title + "'"));
+
         if (!v.isAvailable()) {
             throw new IllegalStateException("Already rented: '" + v.getTitle() + "'");
         }
-        v.rentVideo();
+
+        v.rentVideo(); // flips available=false
+        // With @Transactional, Hibernate will persist the change automatically.
+        // videoRepository.save(v); // not required, but okay if you prefer explicit saves
         return v;
     }
 
+    @Transactional
     public Video giveBack(String title) {
         Video v = findByTitle(title)
                 .orElseThrow(() -> new NoSuchElementException("Video not found: '" + title + "'"));
+
         if (v.isAvailable()) {
             throw new IllegalStateException("Already available: '" + v.getTitle() + "'");
         }
-        v.returnVideo();
+
+        v.returnVideo(); // flips available=true
         return v;
     }
 

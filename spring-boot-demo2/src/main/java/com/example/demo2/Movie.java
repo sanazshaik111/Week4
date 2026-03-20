@@ -1,6 +1,16 @@
 package com.example.demo2.model;
+import jakarta.persistence.Entity;
 
+@Entity
 public class Movie extends Video {
+
+    
+    // JPA requires a no-args constructor
+    protected Movie() {
+        super();
+    }
+
+
     // Constructor
     public Movie(String title, String genre) {
         super(title, genre);

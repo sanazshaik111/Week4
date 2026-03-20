@@ -1,9 +1,25 @@
 package com.example.demo2.model;
+import jakarta.persistence.*;
+
+
+@Entity
+@Inheritance(strategy = InheritanceType.JOINED)
 
 public abstract class Video {
+
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     private String title;
     private String genre;
     private boolean available;
+
+
+    // JPA requires a no-args constructor
+    protected Video() {
+    }
 
     // Constructor
     public Video(String title, String genre) {
